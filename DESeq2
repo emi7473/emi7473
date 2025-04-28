@@ -1,3 +1,7 @@
 #author's note: this can be directly copied into R and directly merged with other code on this github :)
 
-#------------------------DESeq2--------------------------
+#---------------------------------------DESeq2---------------------------------------
+#load your count data file
+count_data <- read.csv("/Volumes/Emi's Drive/Emily Easter/Emily RNA/reusable files/count_matrix.csv", 
+                       row.names = 1)
+
