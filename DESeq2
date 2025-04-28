@@ -61,14 +61,13 @@ plotMA(DESeqresultsLFC, ylim = c(-2, 2))
 #make a fun heatmap!
 vsd <- vst(dds, blind = FALSE)
 sig_genes <- rownames(DESeqresults[which(DESeqresults$padj < 0.01 & !is.na(DESeqresults$padj)), ])
-
 sig_expr <- assay(vsd)[sig_genes, ]
-
+#set legend
 colnames(sig_expr) <- c("T1", "T2", "T3", "T4", "U1", "U2", "U3", "U4")
 annotation_col <- as.data.frame(colData(dds)["condition"])
 rownames(annotation_col) <- colnames(sig_expr)
 
-#heatmap 1!!
+#heatmap 1
 pheatmap(sig_expr,
          cluster_rows = TRUE,
          cluster_cols = TRUE,
