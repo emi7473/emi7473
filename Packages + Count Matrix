@@ -8,7 +8,7 @@ library(DESeq2)
 library(pheatmap)
 library(ggplot2)
 library(dplyr)
-
+library(ggrepel)
 
 #get BAM files from your personal storage
 bam_dir <- "/Volumes/Emi's Drive/Emily Easter/Emily RNA/RNA_seq_070425/mapped_reads"
