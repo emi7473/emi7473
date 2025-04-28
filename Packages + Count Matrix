@@ -5,6 +5,7 @@ if (!requireNamespace("BiocManager", quietly = TRUE))
   install.packages("BiocManager")
 library(Rsubread)
 library(DESeq2)
+library(pheatmap)
 
 #get BAM files from your personal storage
 bam_dir <- "/Volumes/Emi's Drive/Emily Easter/Emily RNA/RNA_seq_070425/mapped_reads"
