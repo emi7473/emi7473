@@ -107,6 +107,22 @@ ggplot(volcano_df, aes(x = log2FoldChange, y = -log10(padj))) +
   geom_vline(xintercept = c(-1, 1), linetype = "dashed", color = "black") +
   geom_hline(yintercept = -log10(0.01), linetype = "dashed", color = "black")
 
-#label genes on the plot
+#optional: label genes on the plot
+#volcano plot 2
+ggplot(volcano_df, aes(x = log2FoldChange, y = -log10(padj))) +
+  geom_point(aes(color = significance), alpha = 0.6) +
+  geom_text_repel(data = volcano_df %>% filter(padj < 0.001 & abs(log2FoldChange) > 2),
+                  aes(label = gene),
+                  size = 3, max.overlaps = 10) +
+  scale_color_manual(values = c("highly significant" = "#E41A1C", 
+                                "padj < 0.01" = "#377EB8", 
+                                "not significant" = "grey")) +
+  theme_minimal(base_size = 14) +
+  labs(title = "Volcano Plot of DE Genes",
+       x = "Log2 Fold Change",
+       y = "-Log10 Adjusted P-value",
+       color = "Significance") +
+  geom_vline(xintercept = c(-1, 1), linetype = "dashed", color = "black") +
+  geom_hline(yintercept = -log10(0.01), linetype = "dashed", color = "black")
 
 
