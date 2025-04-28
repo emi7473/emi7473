@@ -1,0 +1,28 @@
+#author's note: this only needs to be run once
+
+#-----------------------getting-started-------------------
+if (!requireNamespace("BiocManager", quietly = TRUE))
+  install.packages("BiocManager")
+library(Rsubread)
+
+#get BAM files from your personal storage
+bam_dir <- "/Volumes/Emi's Drive/Emily Easter/Emily RNA/RNA_seq_070425/mapped_reads"
+bam_files <- file.path(bam_dir, paste0(1:8, "_mapped_reads_Aligned.sortedByCoord.out.bam"))
+
+#check if they exist in your directory
+file.exists(bam_files)
+
+#find annotation file (downloaded from flybase or other websites)
+annotation_file <- "/Volumes/Emi's Drive/Emily Easter/Emily RNA/Drosophila_melanogaster.BDGP6.46.113.gtf"
+
+#read counting, make sure to specify whether pairedEnd or not
+counts <- featureCounts(bam_files, annot.ext = annotation_file, isGTFAnnotationFile = TRUE, isPairedEnd = TRUE)
+#create matrix
+count_data <- counts$counts
+
+#save count data to avoid running it again and again (it takes forever)
+write.csv(count_data, 
+          file = "/Volumes/Emi's Drive/Emily Easter/Emily RNA/count_matrix.csv", 
+          row.names = TRUE)
+
+#congratulations, now you can continue working with your count_data and don't need to handle big BAM files anymore!
