@@ -14,6 +14,9 @@ library(clusterProfiler)
 library(org.Dm.eg.db)
 install.packages("openxlsx") 
 library(openxlsx)
+library(ggplot2)
+library(dplyr)
+library(ggrepel)
 #----------------------------------input-data-----------------------------------
 #get BAM files
 bam_dir <- "/Volumes/Emi's Drive/Emily Easter/Emily RNA/RNA_seq_070425/mapped_reads"
@@ -158,8 +161,79 @@ write.xlsx(as.data.frame(downregulated),
            rowNames = FALSE)
 
 
+#--------------------------------plots-and-more-----------------------------------
+res_sig_annotatedLFC <- lfcShrink(dds_filtered, coef = "condition_treated_vs_untreated", type = "apeglm")
+
+#shrunken MA plot, save as 'MA plot 1'  
+plotMA(res_sig_annotatedLFC, ylim = c(-2, 2))
 
 
+#set up volcano plot
+volcano_df <- as.data.frame(res_sig_annotatedLFC)
+volcano_df$gene <- rownames(volcano_df)
+
+#remove NAs
+volcano_df <- volcano_df %>% filter(!is.na(padj))
+
+#define significance
+volcano_df <- volcano_df %>%
+  mutate(
+    significance = case_when(
+      padj < 0.05 & abs(log2FoldChange) > 1 ~ "highly significant",
+      padj < 0.05 ~ "padj < 0.05",
+      TRUE ~ "not significant"
+    )
+  )
+
+#create volcano plot, save as 'Volcano Plot 1'
+ggplot(volcano_df, aes(x = log2FoldChange, y = -log10(padj))) +
+  geom_point(aes(color = significance), alpha = 0.6, size = 2) +
+  scale_color_manual(values = c("highly significant" = "#E41A1C",
+                                "padj < 0.05" = "#377EB8",
+                                "not significant" = "grey")) +
+  theme_minimal(base_size = 14) +
+  labs(title = "Volcano Plot of DE Genes",
+       x = "Log2 Fold Change",
+       y = "-Log10 Adjusted P-value",
+       color = "Significance") +
+  geom_vline(xintercept = c(-1, 1), linetype = "dashed", color = "black") +
+  geom_hline(yintercept = -log10(0.01), linetype = "dashed", color = "black")
+
+
+#optional: label top genes on plot
+top_n_genes <- 15
+
+#significant genes by -log10(padj)
+top_labeled_genes <- volcano_df %>%
+  filter(significance == "highly significant") %>%
+  arrange(padj) %>%
+  slice(1:top_n_genes)
+
+#create volcano plot, save as 'Volcano Plot 2'
+ggplot(volcano_df, aes(x = log2FoldChange, y = -log10(padj))) +
+  geom_point(aes(color = significance), alpha = 0.6, size = 2) +
+  geom_text_repel(
+    data = top_labeled_genes,
+    aes(label = gene),
+    size = 3,
+    max.overlaps = Inf,
+    box.padding = 0.3,
+    point.padding = 0.2
+  ) +
+  scale_color_manual(values = c(
+    "highly significant" = "#E41A1C",
+    "padj < 0.05" = "#377EB8",
+    "not significant" = "grey"
+  )) +
+  theme_minimal(base_size = 14) +
+  labs(
+    title = "Volcano Plot of DE Genes",
+    x = "Log2 Fold Change",
+    y = "-Log10 Adjusted P-value",
+    color = "Significance"
+  ) +
+  geom_vline(xintercept = c(-1, 1), linetype = "dashed", color = "black") +
+  geom_hline(yintercept = -log10(0.01), linetype = "dashed", color = "black")
 
 
 
