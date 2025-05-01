@@ -1,0 +1,236 @@
+#author's note: this can be copied directly into R for use :)
+
+#------------------------------required packages--------------------------------
+if (!requireNamespace("BiocManager", quietly = TRUE))
+  install.packages("BiocManager")
+BiocManager::install(c("clusterProfiler", "org.Dm.eg.db"))
+library(Rsubread)
+library(GenomicFeatures)
+library(Rsamtools)
+library(DESeq2)
+library(biomaRt)
+library(pheatmap)
+library(clusterProfiler)
+library(org.Dm.eg.db)
+install.packages("openxlsx") 
+library(openxlsx)
+library(ggplot2)
+library(dplyr)
+library(ggrepel)
+#----------------------------------input-data-----------------------------------
+#get BAM files
+bam_dir <- "/Volumes/Emi's Drive/Emily Easter/Emily RNA/RNA_seq_070425/mapped_reads"
+bam_files <- file.path(bam_dir, paste0(1:8, "_mapped_reads_Aligned.sortedByCoord.out.bam"))
+file.exists(bam_files)
+
+#find annotation file
+annotation_file <- "/Volumes/Emi's Drive/Emily Easter/Emily RNA/Drosophila_melanogaster.BDGP6.46.113.gtf"
+
+#check if annotation file matches BAM files
+gtf <- rtracklayer::import(annotation_file)
+seqlevels(gtf)  
+bam_header <- scanBamHeader(bam_files[1])
+names(bam_header[[1]]$targets)  
+
+#read counting
+counts <- featureCounts(bam_files, annot.ext = annotation_file, isGTFAnnotationFile = TRUE, isPairedEnd = TRUE)
+count_data <- counts$counts
+
+#save count data to avoid running it again and again (it takes forever)
+write.csv(count_data, 
+          file = "/Volumes/Emi's Drive/Emily Easter/Emily RNA/count_matrix.csv", 
+          row.names = TRUE)
+
+#save and load if needed
+saveRDS(count_data, file = "count_data.rds")
+count_data <- readRDS("count_data.rds")
+
+
+#-------------------------------PCA-and-cleaning--------------------------------
+vsd <- vst(dds, blind = FALSE)
+pca_data <- plotPCA(vsd, intgroup = "condition", returnData = TRUE)
+pca_data
+
+#investigate by eye, find extreme outliers
+
+pca_data[order(pca_data$PC1), ]  #see extremes along PC1
+pca_data[order(pca_data$PC2), ]  #see extremes along PC2
+
+#find extreme outliers in columns
+colnames(count_data)
+
+#remove desired outliers
+samples_to_remove <- c("3_mapped_reads_Aligned.sortedByCoord.out.bam",
+                       "6_mapped_reads_Aligned.sortedByCoord.out.bam")
+
+#filter
+count_data_filtered <- count_data[, !colnames(count_data) %in% samples_to_remove]
+sample_info_filtered <- sample_info[!rownames(sample_info) %in% samples_to_remove, ]
+
+#reorganise your file
+dim(count_data_filtered)  #should now have 6 columns
+nrow(sample_info_filtered)  #sshould now have 6 columns
+rownames(sample_info_filtered)  #should match colnames (count_data_filtered)
+
+#define conditions 
+sample_info_filtered <- data.frame(
+  condition = factor(c("treated", "treated", "treated", 
+                       "untreated", "untreated", "untreated"),
+                     levels = c("untreated", "treated"))
+)
+
+#check for completeness
+rownames(sample_info_filtered) <- colnames(count_data_filtered)
+dim(sample_info_filtered)           # 6 × 1
+rownames(sample_info_filtered)      #should match colnames(count_data_filtered)
+
+#run DESeq2
+dds_filtered <- DESeqDataSetFromMatrix(
+  countData = count_data_filtered,
+  colData = sample_info_filtered,
+  design = ~ condition
+)
+dds_filtered <- DESeq(dds_filtered)
+
+#run PCA again to check
+vsd_filtered <- vst(dds_filtered, blind = FALSE)
+plotPCA(vsd_filtered, intgroup = "condition")
+
+#------------------------------clean-results------------------------------------
+#create clean and filtered DESeq object
+res_filtered <- results(dds_filtered)
+summary(res_filtered)
+
+#plot a heatmap to further validate 
+vsd_filtered <- vst(dds_filtered, blind = FALSE)
+res_filtered <- res_filtered[rownames(vsd_filtered), ]
+top_genes <- head(order(res_filtered$padj, na.last = NA), 50)
+mat <- assay(vsd_filtered)[top_genes, ]
+annotation <- as.data.frame(colData(dds_filtered))
+
+pheatmap(mat,
+         show_rownames = FALSE,
+         cluster_cols = TRUE,
+         annotation_col = annotation,
+         scale = "row")  #normalise expression across samples
+
+
+#now filter for significant DEGs
+res_sig_filtered <- res_filtered[which(res_filtered$padj < 0.05), ]
+
+#inspect gene number
+nrow(res_sig_filtered)  
+summary(res_sig_filtered)
+
+#annotate real gene names instead of FB IDs
+ensembl <- useMart("ensembl", dataset = "dmelanogaster_gene_ensembl")
+
+annot <- getBM(attributes = c("ensembl_gene_id", "external_gene_name", "description"),
+               filters = "ensembl_gene_id",
+               values = rownames(res_sig_filtered),
+               mart = ensembl)
+
+#merge with intital results
+res_annotated <- merge(as.data.frame(res_sig_filtered),
+                       annot,
+                       by.x = "row.names", by.y = "ensembl_gene_id")
+
+#save file to your drive
+write.csv(as.data.frame(res_annotated), 
+          file = "/Volumes/Emi's Drive/Emily Easter/Emily RNA/DESeq2_significant_clean.csv", 
+          row.names = TRUE)
+
+#note: if saved as .csv, it can occur that the commas in logFold change are not recognised and false values are transferred
+#thus, rater save as excel sheet if you want to work with it outside of R
+write.xlsx(as.data.frame(res_annotated), 
+           file = "DESeq2_results_filtered.xlsx", 
+           rowNames = TRUE)
+
+#------------------------------for-your-files------------------------------------
+#split into upregulated and downregulated genes for further analysis
+#make sure you filter this from your list of already significant DEGs 
+upregulated <- res_sig_annotated[res_sig_annotated$log2FoldChange > 0, ]
+downregulated <- res_sig_annotated[res_sig_annotated$log2FoldChange < 0, ]
+
+#save files
+write.xlsx(as.data.frame(upregulated), 
+           file = "upregulated.xlsx", 
+           rowNames = FALSE)
+write.xlsx(as.data.frame(downregulated), 
+           file = "downregulated.xlsx", 
+           rowNames = FALSE)
+
+
+#--------------------------------plots-and-more-----------------------------------
+res_sig_annotatedLFC <- lfcShrink(dds_filtered, coef = "condition_treated_vs_untreated", type = "apeglm")
+
+#shrunken MA plot, save as 'MA plot 1'  
+plotMA(res_sig_annotatedLFC, ylim = c(-2, 2))
+
+
+#set up volcano plot
+volcano_df <- as.data.frame(res_sig_annotatedLFC)
+volcano_df$gene <- rownames(volcano_df)
+
+#remove NAs
+volcano_df <- volcano_df %>% filter(!is.na(padj))
+
+#define significance
+volcano_df <- volcano_df %>%
+  mutate(
+    significance = case_when(
+      padj < 0.05 & abs(log2FoldChange) > 1 ~ "highly significant",
+      padj < 0.05 ~ "padj < 0.05",
+      TRUE ~ "not significant"
+    )
+  )
+
+#create volcano plot, save as 'Volcano Plot 1'
+ggplot(volcano_df, aes(x = log2FoldChange, y = -log10(padj))) +
+  geom_point(aes(color = significance), alpha = 0.6, size = 2) +
+  scale_color_manual(values = c("highly significant" = "#E41A1C",
+                                "padj < 0.05" = "#377EB8",
+                                "not significant" = "grey")) +
+  theme_minimal(base_size = 14) +
+  labs(title = "Volcano Plot of DE Genes",
+       x = "Log2 Fold Change",
+       y = "-Log10 Adjusted P-value",
+       color = "Significance") +
+  geom_vline(xintercept = c(-1, 1), linetype = "dashed", color = "black") +
+  geom_hline(yintercept = -log10(0.01), linetype = "dashed", color = "black")
+
+
+#optional: label top genes on plot
+top_n_genes <- 15
+
+#significant genes by -log10(padj)
+top_labeled_genes <- volcano_df %>%
+  filter(significance == "highly significant") %>%
+  arrange(padj) %>%
+  slice(1:top_n_genes)
+
+#create volcano plot, save as 'Volcano Plot 2'
+ggplot(volcano_df, aes(x = log2FoldChange, y = -log10(padj))) +
+  geom_point(aes(color = significance), alpha = 0.6, size = 2) +
+  geom_text_repel(
+    data = top_labeled_genes,
+    aes(label = gene),
+    size = 3,
+    max.overlaps = Inf,
+    box.padding = 0.3,
+    point.padding = 0.2
+  ) +
+  scale_color_manual(values = c(
+    "highly significant" = "#E41A1C",
+    "padj < 0.05" = "#377EB8",
+    "not significant" = "grey"
+  )) +
+  theme_minimal(base_size = 14) +
+  labs(
+    title = "Volcano Plot of DE Genes",
+    x = "Log2 Fold Change",
+    y = "-Log10 Adjusted P-value",
+    color = "Significance"
+  ) +
+  geom_vline(xintercept = c(-1, 1), linetype = "dashed", color = "black") +
+  geom_hline(yintercept = -log10(0.01), linetype = "dashed", color = "black")
